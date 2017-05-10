@@ -24,7 +24,7 @@ class params(object):
 
 		self.obst_centers   = np.array([[0, 0, 0], 
 										[3, 4, 5], 
-										[1.5, 2.5, 2]])     # x, y and z coordinates of the all region of interests
+										[3, 0, 0]])     # x, y and z coordinates of the all region of interests
 
 		self.activate_quad  = 1                # 0 if there are no obstacle, 1 otherwise
 		self.act_term_cnst  = 1
@@ -43,7 +43,7 @@ class params(object):
 		self.quad_rad       = 0.35              # spherical radius of the quadcopter
 
 		self.n_stat_obst    = len(self.obst_centers) - 2 # number of static obstacles
-		self.n_dynam_obst   = self.nquads - 1    # number of dynamic obstacles 
+		self.n_dynam_obst   = self.nquads - 2    # number of dynamic obstacles 
 
 		self.init_pos       = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0],
 										[0, 0, 0, 0, 0, 0, 0, 0, 0]])
@@ -51,7 +51,7 @@ class params(object):
 		self.nobst 			= self.n_stat_obst + self.n_dynam_obst
 		self.nlogics		= self.nobst*7 + 1
 		if self.nobst == 1:
-			nlogics = nlogics - 1
+			self.nlogics = self.nlogics - 1
                            
 		# limits of the states and control
 		self.u_min          = -10
@@ -183,7 +183,7 @@ class MLD(object):
         self.E2 = np.concatenate((np.zeros((2*params.nstates,params.nlogics)),E2_temp1,E2_temp2,E2_temp3))
         self.E3 = np.concatenate((-I,I,np.zeros((22*params.nobst,params.nstates)),-I,I,-I,I,np.zeros((params.nobst+1,params.nstates))))
         self.E4 = np.concatenate((ZEROS,ZEROS,E4_temp1,-model.A1,model.A1,-model.A2,model.A2,np.zeros((params.nobst+1,params.nstates))))
-        #E5 = np.concatenate((M,M,temp1_E5,M1,M1,np.zeros((params.nstates,1)),np.zeros((params.nobst+1,1))))
+        self.E5 = np.zeros((len(self.E1),1))
 
         # save the matrices in the .mat file
         sio.savemat('E1.mat', {'vect':self.E1})

@@ -9,8 +9,8 @@ mp = params()
 model = DynModel(mp)
 mld = MLD(mp,model)
 
-N = 5 # horizon length
-N_max = 25
+N = 10 # horizon length
+N_max = 100
 
 # variables definition here
 x = Variable(mp.nstates,N+1)
@@ -27,6 +27,13 @@ x_0 = Parameter(mp.nstates,1)
 x_r = Parameter(mp.nstates,1)
 E5 = Parameter(len(mld.E1),1)
 goal_r = Parameter(6,1)
+
+# for testing purpose
+#x_init = Variable(mp.nstates,1)
+#x_ref = Variable(mp.nstates,1)
+#Eaff = Variable(len(mld.E1),1)
+#goal_ref = variable(6,1)
+
 
 class TrajectoryPlanner:
 	def __init__(self):
@@ -79,14 +86,14 @@ class TrajectoryPlanner:
 		prob.constraints += [x[:,0] == x_0]
 		return prob
 
-	def HMPC_test(self):
+	def HMPC_test(self,x_ref,goal_ref):
 		# problem formulation of hybrid mpc 
 		states = []
 		for t in range(N):
-			cost = quad_form((x[:, t+1] - x_r),mp.Q1) + quad_form((z[:, t+1] - x_r),mp.Q2) + quad_form((d[:, t] - d_f),mp.Q3) + quad_form((w[:, t]),mp.R)
+			cost = quad_form((x[:, t+1] - x_ref),mp.Q1) + quad_form((z[:, t+1] - x_ref),mp.Q2) + quad_form((d[:, t] - d_f),mp.Q3) + quad_form((w[:, t]),mp.R)
 			#cost = quad_form((x[:, t+1] - x_r),mp.Q1) + quad_form((w[:, t]),mp.R)
 			constr = [ x[:,t+1] == z[:,t],
-					   mld.E2*d[:,t] + mld.E3*z[:,t] <= mld.E1*w[:,t] + mld.E4*x[:,t] + E5,
+					   mld.E2*d[:,t] + mld.E3*z[:,t] <= mld.E1*w[:,t] + mld.E4*x[:,t] +mld.E5,
 					   # constarints on the inputs
 					   #x[:,t+1] == model.A2*x[:,t] + model.B2*w[:,t],
 	                   mp.u_min <= w[0,t], w[0,t] <= mp.u_max, 
@@ -96,8 +103,8 @@ class TrajectoryPlanner:
 
 			states.append( Problem(Minimize(cost), constr) )
 
-		if(mp.act_term_cnst):
-			constr = [mld.P*x[:,N] <= goal_r]
+		# if(mp.act_term_cnst):
+		# 	constr = [mld.P*x[:,N] <= goal_ref]
 			
 		prob = sum(states)
 		prob.constraints += [x[:,0] == x_0]
@@ -184,7 +191,7 @@ class TrajectoryPlanner:
 		#pos_init = np.transpose(np.array([0,0,0,0,0,0,0,0,0]))
 		#x_0.value = np.transpose(np.array([0,0,0,0,0,0,0,0,0]))
 		# based on the initial poition of quad define the MPC controller
-		my_prob = self.HMPC_test()
+		my_prob = self.HMPC()
 		#print(my_prob)
 
 		# state the reference points
@@ -202,7 +209,7 @@ class TrajectoryPlanner:
 								l_r-int(mp.obst_centers[mp.endindx,2])])
 
 		E5_static = self.CalculateE5Static()
-		print(E5_static.shape)
+		#print(E5_static.shape)
 
 		# define the variable for simulation
 		z = np.zeros((N_max,mp.nstates))
@@ -236,9 +243,56 @@ class TrajectoryPlanner:
 			#print(x.value)
 			print(z[count,0:3])
 
+	# for testing purpose
+
+	def test(self):
+
+		x_ref = np.concatenate((mp.obst_centers[mp.endindx],np.array([0,0,0,0,np.pi/4,int(mp.obst_centers[mp.endindx,2])])))
+
+		s = 0.2
+		l_r		= mp.obst_rad + s
+		goal_ref 	= np.array([l_r+int(mp.obst_centers[mp.endindx,0]), 
+							l_r+int(mp.obst_centers[mp.endindx,1]),
+							l_r+int(mp.obst_centers[mp.endindx,2]), 
+							l_r-int(mp.obst_centers[mp.endindx,0]), 
+							l_r-int(mp.obst_centers[mp.endindx,1]),
+							l_r-int(mp.obst_centers[mp.endindx,2])])
+
+		E5_static = self.CalculateE5Static()
+		E5_dynam = self.CalculateE5Dynam()
+		mld.E5	 = np.concatenate((mld.M.reshape((mp.nstates, 1)), mld.M.reshape((mp.nstates, 1)), 
+					E5_static.reshape((22*mp.n_stat_obst,1)), E5_dynam.reshape((22*mp.n_dynam_obst,1)), 
+					mld.M1.reshape((mp.nstates, 1)), mld.M1.reshape((mp.nstates, 1)),
+					np.zeros((2*mp.nstates,1)),np.zeros((mp.nobst+1,1))))
+
+		#print(mld.E2.shape)
+
+		my_prob = self.HMPC_test(x_ref,goal_ref)
+
+		# define the variable for simulation
+		z = np.zeros((N_max,mp.nstates))
+		u = np.zeros((N_max,mp.ninputs))
+
+		count = 0
+
+		while (count < N_max-1):
+
+			x_0.value = z[count,:]
+
+			my_prob.solve( solver = GUROBI)
+			count = count + 1
+			# simulate the system
+			z[count,:] = self.SimulateQuad(x.value[:,0],w.value[:,0]).reshape((1, 9))
+			print("x:")
+			#print(x.value)
+			print(z[count,0:3])
+
+
+
 if __name__ == "__main__":
 
     #rospy.init_node("Trajectory Planner")
     trajplanner = TrajectoryPlanner()
     trajplanner.run()
+    #trajplanner.test()
 
